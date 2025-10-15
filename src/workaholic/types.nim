@@ -1,6 +1,6 @@
 ## Core type definitions used throughout the application
 
-import std/[times, tables]
+import std/[times, strutils]
 
 type
   SystemError* = object of CatchableError
@@ -67,7 +67,7 @@ proc formatBytes*(bytes: int64): string =
     size = size / 1024.0
     inc unitIdx
   
-  result = $size.formatFloat(ffDecimal, 2) & " " & units[unitIdx]
+  result = size.formatFloat(ffDecimal, 2) & " " & units[unitIdx]
 
 proc calculateScore*(item: CleanupItem): float =
   ## Calculate priority score for cleanup item

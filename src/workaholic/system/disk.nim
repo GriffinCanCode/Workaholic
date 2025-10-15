@@ -1,7 +1,7 @@
 ## Disk optimization module
 ## Handles disk-related operations and stats
 
-import std/[os, strutils, osproc, asyncdispatch, re]
+import std/[strutils, osproc, asyncdispatch]
 import ../types
 
 proc parseDFOutput*(output: string): DiskStats =

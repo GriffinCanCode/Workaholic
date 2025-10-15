@@ -1,7 +1,7 @@
 ## Cleaner module - safely removes files and directories
 ## Implements safe deletion with backup capability
 
-import std/[os, asyncdispatch, times, tables]
+import std/[os, asyncdispatch, times, sequtils]
 import ../types
 
 type
@@ -15,10 +15,6 @@ proc safeRemove*(path: string): bool =
   ## Returns true if successful, false otherwise
   try:
     if not fileExists(path) and not dirExists(path):
-      return false
-    
-    # Check write permissions
-    if not path.parentDir.writable:
       return false
     
     if dirExists(path):
@@ -50,7 +46,6 @@ proc cleanItemsParallel*(items: seq[CleanupItem], maxConcurrent: int): Future[Cl
     errors: @[]
   )
   
-  var futures: seq[Future[tuple[success: bool, bytesFreed: int64]]]
   var currentBatch: seq[Future[tuple[success: bool, bytesFreed: int64]]]
   
   for i, item in items:

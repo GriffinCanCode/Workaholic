@@ -1,7 +1,8 @@
 ## Configuration management
 ## Handles loading, validating, and providing access to configuration
 
-import std/[os, tables, strutils, parseutils, parsecfg]
+import std/[os, strutils, parsecfg]
+import system/keychain
 
 type
   ConfigError* = object of CatchableError
@@ -44,7 +45,7 @@ proc getDefaultConfig(): Config =
     safetyLevel: slBalanced,
     showDryRun: true,
     parallelJobs: 4,
-    protectedApps: @["Terminal", "Cursor", "Google Chrome"],
+    protectedApps: @["Terminal", "Cursor", "Google Chrome", "FaceTime", "zoom.us", "Zoom", "Safari", "Brave Browser", "Microsoft Edge"],
     cleaning: CleaningConfig(
       browserCaches: true,
       developerCaches: true,
@@ -60,15 +61,28 @@ proc getDefaultConfig(): Config =
   )
 
 proc loadSudoPassword(): string =
-  ## Load sudo password from environment
+  ## Load sudo password with security priority:
+  ## 1. macOS Keychain (most secure)
+  ## 2. Environment variable
+  ## 3. .env file (least secure)
+  
+  # Try macOS Keychain first (most secure)
+  result = keychainGet()
+  if result != "":
+    return result
+  
+  # Try environment variable
   result = getEnv("SUDO_PASSWORD")
-  if result == "":
-    let envPath = getHomeDir() / ".workaholic" / ".env"
-    if fileExists(envPath):
-      for line in lines(envPath):
-        if line.startsWith("SUDO_PASSWORD="):
-          result = line[14..^1].strip()
-          break
+  if result != "":
+    return result
+  
+  # Fall back to .env file
+  let envPath = getHomeDir() / ".workaholic" / ".env"
+  if fileExists(envPath):
+    for line in lines(envPath):
+      if line.startsWith("SUDO_PASSWORD="):
+        result = line[14..^1].strip()
+        return result
 
 proc loadConfig*(): Config =
   ## Load configuration from file or use defaults
@@ -107,9 +121,16 @@ proc validate*(cfg: Config) =
   ## Validate configuration
   if cfg.sudoPassword == "":
     raise newException(ConfigError, 
-      "SUDO_PASSWORD not found. Set it in environment or ~/.workaholic/.env")
+      "SUDO_PASSWORD not found.\n" &
+      "To set it securely, run: security add-generic-password -s workaholic -a sudo -w\n" &
+      "Or set SUDO_PASSWORD environment variable or create ~/.workaholic/.env")
   
   if cfg.parallelJobs < 1 or cfg.parallelJobs > 16:
     raise newException(ConfigError, 
       "parallel_jobs must be between 1 and 16")
+
+proc setSudoPassword*(password: string): bool =
+  ## Store sudo password in macOS Keychain securely
+  ## Returns true if successful
+  result = keychainSet(password)
 

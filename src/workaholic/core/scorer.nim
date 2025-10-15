@@ -1,7 +1,7 @@
 ## Intelligent scoring system for cleanup prioritization
 ## Uses heuristics to determine what should be cleaned first
 
-import std/[algorithm, tables, times]
+import std/[algorithm, tables, times, sequtils]
 import ../types
 
 proc scoreAndPrioritize*(items: seq[CleanupItem]): seq[CleanupItem] =

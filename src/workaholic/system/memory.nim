@@ -1,7 +1,7 @@
 ## Memory optimization module
 ## Handles memory-related optimizations
 
-import std/[os, strutils, osproc, asyncdispatch, re]
+import std/[strutils, osproc, asyncdispatch, re, streams]
 import ../[types, config]
 
 proc parseVMStat*(output: string): MemoryStats =
@@ -47,7 +47,7 @@ proc optimizeSystemMemory*(): Future[void] {.async.} =
     let cfg = loadConfig()
     let process = startProcess("sudo", args = ["-S", "purge"], 
                               options = {poUsePath, poStdErrToStdOut})
-    process.inputStream.write(cfg.sudoPassword & "\n")
+    process.inputStream.writeLine(cfg.sudoPassword)
     process.inputStream.close()
     discard process.waitForExit()
     process.close()

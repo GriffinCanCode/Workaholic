@@ -1,7 +1,7 @@
 ## TUI (Terminal User Interface) module
 ## Provides rich terminal interface with real-time updates
 
-import std/[terminal, strformat, strutils, tables, times]
+import std/[terminal, strformat, strutils, times]
 import types, config
 
 type
@@ -52,27 +52,38 @@ proc drawLine*(ui: UI, text: string, padding: int = 2) =
 
 proc drawProgressBar*(ui: UI, progress: float, label: string = "") =
   ## Draw a progress bar
-  let width = ui.width - 12
-  let filled = int(progress * float(width))
-  let empty = width - filled
+  let barWidth = ui.width - 12
+  let filled = int(progress * float(barWidth))
+  let empty = barWidth - filled
+  
+  # Calculate visual length (excluding ANSI codes)
+  var visualLen = 2  # "│  "
+  if label != "":
+    visualLen += label.len + 1
+  
+  # Color-code based on progress
+  var colorCode = ""
+  if progress < 0.33:
+    colorCode = ansiForegroundColorCode(fgRed)
+  elif progress < 0.66:
+    colorCode = ansiForegroundColorCode(fgYellow)
+  else:
+    colorCode = ansiForegroundColorCode(fgGreen)
+  
+  let percentStr = &" {int(progress * 100)}%"
+  visualLen += filled + empty + percentStr.len
+  
+  let padding = max(0, ui.width - visualLen - 1)
   
   var bar = "│  "
   if label != "":
     bar &= label & " "
-  
-  # Color-code based on progress
-  if progress < 0.33:
-    bar &= $fgRed
-  elif progress < 0.66:
-    bar &= $fgYellow
-  else:
-    bar &= $fgGreen
-  
+  bar &= colorCode
   bar &= "■".repeat(filled)
-  bar &= $resetStyle
+  bar &= ansiResetCode
   bar &= "□".repeat(empty)
-  bar &= &" {int(progress * 100)}%"
-  bar &= " ".repeat(ui.width - bar.len - 3)
+  bar &= percentStr
+  bar &= " ".repeat(padding)
   bar &= "│\n"
   
   stdout.write(bar)
@@ -105,13 +116,13 @@ proc updateOperation*(ui: UI, operation: Operation) =
   
   # Status
   let statusColor = case operation.kind
-    of opScan: $fgCyan
-    of opAnalyze: $fgYellow
-    of opClean: $fgMagenta
-    of opOptimize: $fgBlue
-    of opComplete: $fgGreen
+    of opScan: ansiForegroundColorCode(fgCyan)
+    of opAnalyze: ansiForegroundColorCode(fgYellow)
+    of opClean: ansiForegroundColorCode(fgMagenta)
+    of opOptimize: ansiForegroundColorCode(fgBlue)
+    of opComplete: ansiForegroundColorCode(fgGreen)
   
-  ui.drawLine(statusColor & $operation.kind & $resetStyle & ": " & operation.target, 2)
+  ui.drawLine(statusColor & $operation.kind & ansiResetCode & ": " & operation.target, 2)
   ui.drawLine(operation.message, 2)
   ui.drawLine("")
   
@@ -134,12 +145,12 @@ proc updateSystemStats*(ui: UI, stats: SystemStats) =
   ui.drawLine("")
   
   # Memory section
-  ui.drawLine($fgCyan & "Memory:" & $resetStyle, 2)
+  ui.drawLine(ansiForegroundColorCode(fgCyan) & "Memory:" & ansiResetCode, 2)
   ui.displayMemoryStats(stats.memory)
   ui.drawLine("")
   
   # Disk section
-  ui.drawLine($fgCyan & "Disk:" & $resetStyle, 2)
+  ui.drawLine(ansiForegroundColorCode(fgCyan) & "Disk:" & ansiResetCode, 2)
   ui.displayDiskStats(stats.disk)
   ui.drawLine("")
   
@@ -147,8 +158,8 @@ proc updateSystemStats*(ui: UI, stats: SystemStats) =
   
   flushFile(stdout)
 
-proc showCompletion*(ui: UI) =
-  ## Show completion screen
+proc showCompletion*(ui: UI, stats: CleanupStats, before: SystemStats, after: SystemStats) =
+  ## Show completion screen with statistics
   eraseScreen()
   setCursorPos(0, 0)
   
@@ -158,8 +169,35 @@ proc showCompletion*(ui: UI) =
   # ASCII art celebration
   ui.drawLine("    ✨  🚀  ✨", 15)
   ui.drawLine("")
-  ui.drawLine($fgGreen & "System optimization completed successfully!" & $resetStyle, 2)
+  ui.drawLine(ansiForegroundColorCode(fgGreen) & "System optimization completed successfully!" & ansiResetCode, 2)
   ui.drawLine("")
+  
+  # Cleanup Statistics
+  if stats.itemsScanned > 0:
+    ui.drawLine(ansiForegroundColorCode(fgCyan) & "Cleanup Results:" & ansiResetCode, 2)
+    ui.drawLine(&"  Items Scanned:  {stats.itemsScanned}", 2)
+    ui.drawLine(&"  Items Deleted:  {stats.itemsDeleted}", 2)
+    ui.drawLine(&"  Space Freed:    {formatBytes(stats.bytesFreed)}", 2)
+    let durationSecs = int(stats.duration.inMilliseconds / 1000)
+    ui.drawLine(&"  Duration:       {durationSecs}s", 2)
+    ui.drawLine("")
+  
+  # Before/After Comparison
+  if before.memory.free > 0 and after.memory.free > 0:
+    ui.drawLine(ansiForegroundColorCode(fgCyan) & "System Improvements:" & ansiResetCode, 2)
+    
+    # Memory comparison
+    let memoryFreed = after.memory.free - before.memory.free
+    if memoryFreed > 0:
+      ui.drawLine(&"  Memory Freed:   {formatBytes(memoryFreed)}", 2)
+    
+    # Disk comparison
+    let diskFreed = after.disk.free - before.disk.free
+    if diskFreed > 0:
+      ui.drawLine(&"  Disk Freed:     {formatBytes(diskFreed)}", 2)
+    
+    ui.drawLine("")
+  
   ui.drawLine("Your system is now optimized for peak performance.", 2)
   ui.drawLine("")
   

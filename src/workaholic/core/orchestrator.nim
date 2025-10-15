@@ -1,48 +1,66 @@
 ## Orchestrator - coordinates the entire optimization workflow
 ## Manages pipeline execution and system optimization
 
-import std/[asyncdispatch, times, tables]
+import std/[asyncdispatch, tables]
 import ../[config, types]
 import ../system/[apps, memory, disk, network, stats]
-import pipeline, scanner, scorer, cleaner
+import pipeline
 
 type
-  Orchestrator* = ref object
+  Orchestrator*[T] = ref object
     config*: Config
     pipeline*: Pipeline
     stats*: Table[string, CleanupStats]
     systemStatsBefore*: SystemStats
     systemStatsAfter*: SystemStats
+    ui*: T
 
-proc newOrchestrator*(config: Config): Orchestrator =
+proc newOrchestrator*[T](config: Config, ui: T): Orchestrator[T] =
   ## Create new orchestrator
-  result = Orchestrator(
+  let orchestrator = Orchestrator[T](
     config: config,
-    pipeline: newPipeline(config.parallelJobs),
-    stats: initTable[string, CleanupStats]()
+    stats: initTable[string, CleanupStats](),
+    ui: ui
   )
+  
+  # Create pipeline with progress callback
+  let progressCallback = proc(progress: float, message: string) =
+    ui.updateOperation(Operation(
+      kind: opClean,
+      target: "Caches",
+      progress: 0.2 + (progress * 0.4),  # Map pipeline progress to 20-60%
+      message: message
+    ))
+  
+  orchestrator.pipeline = newPipeline(
+    config.parallelJobs, 
+    progressCallback,
+    config.cleaning.ageFilterDays
+  )
+  result = orchestrator
 
-proc closeApps*(orchestrator: Orchestrator) {.async.} =
+proc closeApps*[T](orchestrator: Orchestrator[T]) {.async.} =
   ## Close unnecessary applications
   await closeUnnecessaryApps(orchestrator.config.protectedApps)
 
-proc optimizeMemory*(orchestrator: Orchestrator) {.async.} =
+proc optimizeMemory*[T](orchestrator: Orchestrator[T]) {.async.} =
   ## Optimize system memory
   if orchestrator.config.optimization.memory:
     await optimizeSystemMemory()
 
-proc optimizeDisk*(orchestrator: Orchestrator) {.async.} =
+proc optimizeDisk*[T](orchestrator: Orchestrator[T]) {.async.} =
   ## Optimize disk usage
   if orchestrator.config.optimization.disk:
     await optimizeSystemDisk()
 
-proc optimizeNetwork*(orchestrator: Orchestrator) {.async.} =
+proc optimizeNetwork*[T](orchestrator: Orchestrator[T]) {.async.} =
   ## Optimize network settings
   if orchestrator.config.optimization.network:
     await optimizeSystemNetwork()
 
-proc run*(orchestrator: Orchestrator, ui: auto) {.async.} =
+proc run*[T](orchestrator: Orchestrator[T]) {.async.} =
   ## Run the complete optimization workflow
+  let ui = orchestrator.ui
   
   # Capture initial system stats
   orchestrator.systemStatsBefore = await getSystemStats()
@@ -83,7 +101,7 @@ proc run*(orchestrator: Orchestrator, ui: auto) {.async.} =
     ui.updateOperation(Operation(
       kind: opOptimize,
       target: "Memory",
-      progress: 0.66,
+      progress: 0.7,
       message: "Optimizing memory..."
     ))
     await orchestrator.optimizeMemory()
@@ -92,7 +110,7 @@ proc run*(orchestrator: Orchestrator, ui: auto) {.async.} =
     ui.updateOperation(Operation(
       kind: opOptimize,
       target: "Disk",
-      progress: 0.77,
+      progress: 0.8,
       message: "Optimizing disk..."
     ))
     await orchestrator.optimizeDisk()
@@ -101,7 +119,7 @@ proc run*(orchestrator: Orchestrator, ui: auto) {.async.} =
     ui.updateOperation(Operation(
       kind: opOptimize,
       target: "Network",
-      progress: 0.88,
+      progress: 0.9,
       message: "Optimizing network..."
     ))
     await orchestrator.optimizeNetwork()

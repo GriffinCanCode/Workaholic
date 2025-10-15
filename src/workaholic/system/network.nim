@@ -1,7 +1,7 @@
 ## Network optimization module
 ## Handles network-related optimizations
 
-import std/[os, osproc, asyncdispatch]
+import std/[osproc, asyncdispatch, streams]
 import ../config
 
 proc flushDNS*(): Future[void] {.async.} =
@@ -12,7 +12,7 @@ proc flushDNS*(): Future[void] {.async.} =
     # Flush DNS cache
     var process = startProcess("sudo", args = ["-S", "dscacheutil", "-flushcache"],
                               options = {poUsePath, poStdErrToStdOut})
-    process.inputStream.write(cfg.sudoPassword & "\n")
+    process.inputStream.writeLine(cfg.sudoPassword)
     process.inputStream.close()
     discard process.waitForExit()
     process.close()
@@ -20,7 +20,7 @@ proc flushDNS*(): Future[void] {.async.} =
     # Restart mDNSResponder
     process = startProcess("sudo", args = ["-S", "killall", "-HUP", "mDNSResponder"],
                           options = {poUsePath, poStdErrToStdOut})
-    process.inputStream.write(cfg.sudoPassword & "\n")
+    process.inputStream.writeLine(cfg.sudoPassword)
     process.inputStream.close()
     discard process.waitForExit()
     process.close()
@@ -36,7 +36,7 @@ proc optimizeTCP*(): Future[void] {.async.} =
     # Disable delayed ACK
     var process = startProcess("sudo", args = ["-S", "sysctl", "-w", "net.inet.tcp.delayed_ack=0"],
                               options = {poUsePath, poStdErrToStdOut})
-    process.inputStream.write(cfg.sudoPassword & "\n")
+    process.inputStream.writeLine(cfg.sudoPassword)
     process.inputStream.close()
     discard process.waitForExit()
     process.close()

@@ -1,8 +1,8 @@
 ## Main entry point for Workaholic system optimizer
 ## Orchestrates the entire cleanup and optimization pipeline
 
-import std/[os, strformat, terminal]
-import workaholic/[config, ui, core/pipeline, core/orchestrator]
+import std/[terminal, asyncdispatch, tables]
+import workaholic/[types, config, ui, core/pipeline, core/orchestrator]
 
 proc displayBanner() =
   styledEcho(fgCyan, styleBright, """
@@ -13,7 +13,7 @@ proc displayBanner() =
   styledEcho(fgWhite, "System Optimization Tool v2.0")
   echo ""
 
-proc main() =
+proc main() {.async.} =
   try:
     # Display banner
     displayBanner()
@@ -25,13 +25,17 @@ proc main() =
     let ui = initUI(cfg)
     
     # Create orchestrator
-    let orchestrator = newOrchestrator(cfg)
+    let orchestrator = newOrchestrator(cfg, ui)
     
     # Run the optimization pipeline
-    orchestrator.run(ui)
+    await orchestrator.run()
     
-    # Display completion
-    ui.showCompletion()
+    # Display completion with stats
+    ui.showCompletion(
+      orchestrator.stats.getOrDefault("cleanup"),
+      orchestrator.systemStatsBefore,
+      orchestrator.systemStatsAfter
+    )
     
   except ConfigError as e:
     styledEcho(fgRed, styleBright, "Configuration Error: ", resetStyle, e.msg)
@@ -44,5 +48,5 @@ proc main() =
     quit(1)
 
 when isMainModule:
-  main()
+  waitFor main()
 

@@ -1,7 +1,7 @@
 ## Application management module
 ## Handles closing and managing running applications
 
-import std/[os, strutils, asyncdispatch, osproc]
+import std/[strutils, asyncdispatch, osproc, sequtils]
 
 proc getRunningApps*(): seq[string] =
   ## Get list of running applications

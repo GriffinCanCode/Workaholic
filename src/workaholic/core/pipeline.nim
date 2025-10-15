@@ -1,7 +1,7 @@
 ## Pipeline architecture for streaming cleanup operations
 ## Implements the actor model for concurrent processing
 
-import std/[os, tables, times, asyncdispatch, deques]
+import std/[times, asyncdispatch, deques]
 import ../types
 import scanner, cleaner, scorer
 
@@ -12,13 +12,17 @@ type
     psCleaning
     psComplete
   
+  ProgressCallback* = proc(progress: float, message: string) {.closure.}
+  
   Pipeline* = ref object
     stage*: PipelineStage
     items*: Deque[CleanupItem]
     stats*: CleanupStats
     maxConcurrent*: int
+    onProgress*: ProgressCallback
+    ageFilterDays*: int
 
-proc newPipeline*(maxConcurrent: int = 4): Pipeline =
+proc newPipeline*(maxConcurrent: int = 4, onProgress: ProgressCallback = nil, ageFilterDays: int = 7): Pipeline =
   ## Create new cleanup pipeline
   result = Pipeline(
     stage: psScanning,
@@ -29,7 +33,9 @@ proc newPipeline*(maxConcurrent: int = 4): Pipeline =
       bytesFreed: 0,
       duration: initDuration()
     ),
-    maxConcurrent: maxConcurrent
+    maxConcurrent: maxConcurrent,
+    onProgress: onProgress,
+    ageFilterDays: ageFilterDays
   )
 
 proc scan*(pipeline: Pipeline, cacheType: CacheType): Future[seq[CleanupItem]] {.async.} =
@@ -55,21 +61,43 @@ proc run*(pipeline: Pipeline, cacheTypes: seq[CacheType]): Future[CleanupStats] 
   let startTime = getTime()
   
   # Scan all cache types concurrently
+  if not pipeline.onProgress.isNil:
+    pipeline.onProgress(0.1, "Scanning cache directories...")
+  
   var scanFutures: seq[Future[seq[CleanupItem]]]
-  for cacheType in cacheTypes:
+  for i, cacheType in cacheTypes:
     scanFutures.add(pipeline.scan(cacheType))
   
   # Wait for all scans to complete
   var allItems: seq[CleanupItem]
-  for future in scanFutures:
+  for i, future in scanFutures:
     let items = await future
     allItems.add(items)
+    if not pipeline.onProgress.isNil:
+      let progress = 0.1 + (0.2 * float(i + 1) / float(scanFutures.len))
+      pipeline.onProgress(progress, "Scanned " & $allItems.len & " cache items...")
   
   # Score and prioritize
-  let scoredItems = pipeline.score(allItems)
+  if not pipeline.onProgress.isNil:
+    pipeline.onProgress(0.35, "Analyzing and prioritizing cleanup items...")
+  
+  # Apply age filter if configured
+  var filteredItems = allItems
+  if pipeline.ageFilterDays > 0:
+    filteredItems = filterByAge(allItems, pipeline.ageFilterDays)
+    if not pipeline.onProgress.isNil:
+      pipeline.onProgress(0.37, "Filtered to " & $filteredItems.len & " items older than " & $pipeline.ageFilterDays & " days")
+  
+  let scoredItems = pipeline.score(filteredItems)
   
   # Clean in parallel
-  let cleanStats = await pipeline.clean(scoredItems)
+  if not pipeline.onProgress.isNil:
+    pipeline.onProgress(0.4, "Cleaning " & $scoredItems.len & " items...")
+  
+  discard await pipeline.clean(scoredItems)
+  
+  if not pipeline.onProgress.isNil:
+    pipeline.onProgress(0.6, "Cleanup complete: " & $pipeline.stats.itemsDeleted & " items removed")
   
   # Update duration
   pipeline.stats.duration = getTime() - startTime
