@@ -1,0 +1,20 @@
+[general]
+safety_level = "balanced"  # conservative, balanced, or aggressive
+show_dry_run = true
+parallel_jobs = 4
+
+[protected_apps]
+always_keep = ["Terminal", "Cursor", "Google Chrome"]
+
+[cleaning]
+browser_caches = true
+developer_caches = true
+application_caches = true
+system_logs = true
+age_filter_days = 7
+
+[optimization]
+memory = true
+disk = true
+network = true
+
